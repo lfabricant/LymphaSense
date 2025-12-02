@@ -10,8 +10,14 @@
 
 //
 
-
-
+// Add this struct outside the BluetoothManager class, maybe at the top of the file.
+struct BluetoothDataPoint: Identifiable {
+    let id = UUID() // Useful for ForEach in SwiftUI
+    let timestamp: Date
+    let value: String
+    
+    
+}
 
 
 import Foundation
@@ -49,6 +55,9 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     private var rssiArray = [NSNumber]()
 
     @Published var isConnected: Bool = false
+    
+    //@Published var receivedDataHistory: [String] = []
+    @Published var receivedDataHistory: [BluetoothDataPoint] = []
 
 
 
@@ -490,10 +499,34 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
 
 
     // --- MARK: - 📩 Data Handling
+    
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+
+            guard characteristic == rxCharacteristic,
+                  let characteristicValue = characteristic.value,
+                  let ASCIIstring = NSString(data: characteristicValue, encoding: String.Encoding.utf8.rawValue)
+            else {
+                return
+            }
+
+            let receivedString = ASCIIstring as String
+
+            print("Value Recieved: \(receivedString)")
+            
+            // 🎯 FIX: Append the received string to the published array
+            DispatchQueue.main.async {
+                //self.receivedDataHistory.append(receivedString)
+                let newPoint = BluetoothDataPoint(timestamp: Date(), value: receivedString)
+                        self.receivedDataHistory.append(newPoint)
+            }
+
+            // Keep the NotificationCenter post for legacy/testing purposes
+            NotificationCenter.default.post(name:NSNotification.Name(rawValue: "Notify"), object: receivedString)
+        }
 
     
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+    /*func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
 
 
 
@@ -510,18 +543,15 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
               let ASCIIstring = NSString(data: characteristicValue, encoding: String.Encoding.utf8.rawValue) else { return }
 
 
-
         characteristicASCIIValue = ASCIIstring
 
 
-
         print("Value Recieved: \((characteristicASCIIValue as String))")
-
-
+    
 
         NotificationCenter.default.post(name:NSNotification.Name(rawValue: "Notify"), object: "\((characteristicASCIIValue as String))")
 
-    }
+    } */
 
 
 

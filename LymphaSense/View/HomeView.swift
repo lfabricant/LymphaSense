@@ -1,130 +1,3 @@
-//  HomeView.swift
-
-//  LymphaSense
-
-//
-
-//  Created by Lindsay on 11/28/25.
-
-//
-
-/*
-
-import SwiftUI
-
-import CoreBluetooth
-
-
-
-struct HomeView: View {
-
-    
-
-    // Access the shared BluetoothManager instance
-
-    @EnvironmentObject var bluetoothManager: BluetoothManager
-
-    
-
-    var body: some View {
-
-        VStack {
-
-            Text("Dashboard")
-
-                .font(.largeTitle)
-
-                .padding()
-
-            
-
-            // Display connection status
-
-            Text(bluetoothManager.isConnected ? "Status: Connected ✅" : "Status: Disconnected ❌")
-
-                .foregroundColor(bluetoothManager.isConnected ? .green : .red)
-
-                .padding(.bottom, 20)
-
-            
-
-            Divider()
-
-        
-            // 🎯 Display the data history in a scrolling list
-
-            List {
-
-                // Use .reversed() to show the newest data at the top of the list
-
-                ForEach(bluetoothManager.receivedDataHistory.reversed(), id: \.self) { dataString in
-
-                    Text(dataString)
-
-                        .font(.body)
-
-                }
-
-            }
-
-            .listStyle(.plain)
-
-            
-
-            Spacer()
-
-        }
-
-        .padding()
-
-        .navigationTitle("Home")
-
-    }
-
-}
-
-
-import SwiftUI
-
-struct HomeView: View {
-    
-    // Access the shared BluetoothManager instance
-    @EnvironmentObject var bluetoothManager: BluetoothManager
-    
-    var body: some View {
-        VStack {
-            Text("Dashboard")
-                .font(.largeTitle)
-                .padding()
-            
-            // Display connection status
-            Text(bluetoothManager.isConnected ? "Status: Connected ✅" : "Status: Disconnected ❌")
-                .foregroundColor(bluetoothManager.isConnected ? .green : .red)
-                .padding(.bottom, 20)
-            
-            Divider()
-            
-            Text("Received Data History (\(bluetoothManager.receivedDataHistory.count) entries)")
-                .font(.title2)
-                .padding(.vertical)
-
-            // 🎯 Display the data history in a scrolling list
-            List {
-                // Use .reversed() to show the newest data at the top of the list
-                ForEach(bluetoothManager.receivedDataHistory.reversed(), id: \.self) { dataString in
-                    Text(dataString)
-                        .font(.body)
-                }
-            }
-            .listStyle(.plain)
-            
-            Spacer()
-        }
-        .padding()
-        .navigationTitle("Home")
-    }
-}*/
-
 //
 //  HomeView.swift
 //  AMAL
@@ -132,8 +5,10 @@ struct HomeView: View {
 //  Created by Lindsay on 10/29/25.
 //
 
+
 import SwiftUI
 import Charts
+import CoreBluetooth
 
 // MARK: - Data Model
 struct PressureData: Identifiable {
@@ -184,6 +59,7 @@ final class PressureDataManager {
 struct HomeView: View {
     @State private var manager = PressureDataManager()
     @State private var pose: Chart3DPose = .default
+    @EnvironmentObject var bluetoothManager: BluetoothManager
 
     private func color(for pressure: Double) -> Color {
         let goal = manager.goalPressure
@@ -204,8 +80,36 @@ struct HomeView: View {
                 Text("Home ")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-
+                
+                // MARK: - 2D Pressure Chart
+                Text("2D Pressure Distribution")
+                    .font(.headline)
+                
+                Chart(bluetoothManager.receivedDataHistory) { dataPoint in
+                
+                    PointMark(
+                        // X-axis: Time from the timestamp
+                        x: .value("Time", dataPoint.timestamp),
+                        // Y-axis: Data point value (converted to Double)
+                        
+                        //y: .value("Value", dataPoint.value)
+                        y: .value("Value",
+                                  Int(dataPoint.value
+                                              .trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1)
+                    )
+                    .foregroundStyle(.blue) // Ensure the line has a clear color
+                    
+                }
+                // 🎯 FIX: Adjust the Y-scale domain to cover the full 0-1000 range.
+                .chartYScale(domain: 0...1000)
+                //.chartXAxis { ... } // (Keep your existing axis settings here)
+                .frame(height: 250) // (Keep your existing frame settings here)
+                
+                
                 // MARK: - 3D Pressure Chart
+                Text("3D Pressure Distribution")
+                    .font(.headline)
+                
                 Chart3D(manager.dataPoints) { point in
                     PointMark(
                         x: .value("X", point.x),
@@ -220,10 +124,6 @@ struct HomeView: View {
                 .padding()
                 .cornerRadius(16)
                 .shadow(radius: 4)
-
-                Text("3D Pressure Distribution")
-                    .font(.headline)
-                    .padding(.bottom)
                 
             }
             .padding(.horizontal)
@@ -240,5 +140,3 @@ struct HomeView: View {
 #Preview {
     HomeView()
 }
-
-
