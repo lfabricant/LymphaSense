@@ -55,7 +55,7 @@ struct DataView: View {
                          Spacer()
                          
                          // Display the Value
-                         Text(dataPoint.value)
+                         Text(String(dataPoint.value))
                              .font(.body)
                              .fontWeight(.medium)
                      }

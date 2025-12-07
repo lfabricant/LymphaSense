@@ -62,7 +62,7 @@ struct HomeView: View {
     @EnvironmentObject var bluetoothManager: BluetoothManager
 
     private func color(for pressure: Double) -> Color {
-        let goal = manager.goalPressure
+        let goal = 10.0
         let diff = abs(pressure - goal)
 
         if diff < 5 {
@@ -73,6 +73,7 @@ struct HomeView: View {
             return .red
         }
     }
+    
 
     var body: some View {
        ScrollView {
@@ -93,17 +94,16 @@ struct HomeView: View {
                         // Y-axis: Data point value (converted to Double)
                         
                         //y: .value("Value", dataPoint.value)
-                        y: .value("Value",
-                                  Int(dataPoint.value
-                                              .trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1)
+                        y: .value("Value", dataPoint.value)
                     )
-                    .foregroundStyle(.blue) // Ensure the line has a clear color
+                    .foregroundStyle(color(for: Double(dataPoint.value)))
                     
                 }
-                // 🎯 FIX: Adjust the Y-scale domain to cover the full 0-1000 range.
-                .chartYScale(domain: 0...1000)
-                //.chartXAxis { ... } // (Keep your existing axis settings here)
-                .frame(height: 250) // (Keep your existing frame settings here)
+                //.chartScrollableAxes(.vertical)
+                //.chartYScale(domain: 0...1000)
+                .chartYScale(domain: 0...25)
+                .chartScrollableAxes(.horizontal)
+                .frame(height: 250)
                 
                 
                 // MARK: - 3D Pressure Chart

@@ -18,9 +18,7 @@ struct LymphaSenseApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                //.onAppear {
-                   // NotificationManager.shared.requestAuthorization()
-               // }
+
         }
     }
 }

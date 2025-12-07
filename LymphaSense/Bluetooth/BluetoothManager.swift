@@ -11,12 +11,37 @@
 //
 
 // Add this struct outside the BluetoothManager class, maybe at the top of the file.
-struct BluetoothDataPoint: Identifiable {
-    let id = UUID() // Useful for ForEach in SwiftUI
+struct BluetoothDataPoint: Identifiable, Codable {
+    // 1. Keep 'id' as a constant with a default value.
+    let id = UUID()
+    
+    // 2. These are the fields that are actually saved and loaded.
     let timestamp: Date
-    let value: String
+    let value: Double
     
+    // Define the Coding Keys for the properties we want to save/load
+    private enum CodingKeys: String, CodingKey {
+        // Exclude 'id' from the list of keys the Decoder should look for
+        case timestamp
+        case value
+    }
     
+    // Implement custom decoder to assign the UUID() default *after* decoding
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Decode only the properties listed in CodingKeys
+        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+        self.value = try container.decode(Double.self, forKey: .value)
+        
+        // 'id' is automatically assigned its default value (UUID()) here.
+    }
+    
+    // You also need the standard initializer for creating *new* points in the app
+    init(timestamp: Date, value: Double) {
+        self.timestamp = timestamp
+        self.value = value
+    }
 }
 
 
@@ -48,6 +73,8 @@ protocol BluetoothManagerDelegate: AnyObject {
 
 class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
+    private let dataFilename = "bluetooth_data_history.json"
+    
     @Published var isScanning: Bool = false
 
     @Published private(set) var peripherals: [CBPeripheral] = []
@@ -72,21 +99,13 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     private var txCharacteristic: CBCharacteristic!
 
     private var rxCharacteristic: CBCharacteristic!
-
-
-
-    /*override init() {
-
-        super.init()
-
-        // Initialization immediately starts the state checks
-
-        central = CBCentralManager(delegate: self, queue: .main)
-
-    }*/
+    
     
     override init() {
+
         super.init()
+        
+        self.loadHistory()
         
         // ⭐️ Crucial Update: Add the restoration identifier and the right options
         let options: [String: Any] = [
@@ -96,6 +115,72 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         
         // Use the options when initializing the central manager
         central = CBCentralManager(delegate: self, queue: .main, options: options)
+    }
+    
+        
+    // --- Persistence Methods ---
+
+    // 1. Get the URL for the save file
+    private func getFileURL() -> URL {
+            // Use the Documents directory for reliable app data storage
+            let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            return paths[0].appendingPathComponent(dataFilename)
+    }
+
+    // 2. Load data from disk
+    func loadHistory() {
+            let fileURL = getFileURL()
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let decoder = JSONDecoder()
+                self.receivedDataHistory = try decoder.decode([BluetoothDataPoint].self, from: data)
+                print("Successfully loaded \(self.receivedDataHistory.count) historical data points.")
+            } catch {
+                // This is normal the first time the app runs or if the file is empty/missing
+                print("No saved history found or load error: \(error.localizedDescription)")
+                self.receivedDataHistory = []
+            }
+    }
+    
+
+    // 3. Save data to disk
+    func saveHistory() {
+            let fileURL = getFileURL()
+            do {
+                let encoder = JSONEncoder()
+                // Set output formatting for readability (optional)
+                encoder.outputFormatting = .prettyPrinted
+                
+                let data = try encoder.encode(self.receivedDataHistory)
+                try data.write(to: fileURL)
+                print("Successfully saved \(self.receivedDataHistory.count) data points.")
+            } catch {
+                print("Error saving history: \(error.localizedDescription)")
+            }
+    }
+    
+    func clearHistory() {
+        let fileURL = getFileURL()
+        let fileManager = FileManager.default
+        
+        do {
+            // 1. Check if the file exists before attempting to delete it
+            if fileManager.fileExists(atPath: fileURL.path) {
+                try fileManager.removeItem(at: fileURL)
+                print("✅ Successfully cleared (deleted) historical data file.")
+            } else {
+                print("No historical data file found to clear.")
+            }
+            
+            // 2. Clear the in-memory array and notify SwiftUI
+            DispatchQueue.main.async {
+                self.receivedDataHistory = []
+                print("In-memory history array cleared.")
+            }
+            
+        } catch {
+            print("❌ Error clearing historical data file: \(error.localizedDescription)")
+        }
     }
 
 
@@ -510,14 +595,25 @@ class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CB
             }
 
             let receivedString = ASCIIstring as String
+        
+            let trimmedString = receivedString.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            print("Value Recieved: \(receivedString)")
+        let receivedInt = Double(trimmedString) ?? 0.0
+        
+        if receivedInt == 0.0 && trimmedString.isEmpty {
+                print("Ignored empty data packet (likely newline).")
+                return // Skip saving this zero
+            }
+        
+            print("Value Recieved: \(receivedInt)")
             
             // 🎯 FIX: Append the received string to the published array
             DispatchQueue.main.async {
                 //self.receivedDataHistory.append(receivedString)
-                let newPoint = BluetoothDataPoint(timestamp: Date(), value: receivedString)
-                        self.receivedDataHistory.append(newPoint)
+                let newPoint = BluetoothDataPoint(timestamp: Date(), value: receivedInt)
+                self.receivedDataHistory.append(newPoint)
+                self.saveHistory()
+            
             }
 
             // Keep the NotificationCenter post for legacy/testing purposes
@@ -664,186 +760,3 @@ extension BluetoothManager {
         }
     }*/
 }
-
-/*
- //
- //  BluetoothManager.swift
- //  LymphaSense
- //
- //  Created by Lindsay on 11/28/25.
- //
-
- import Foundation
- import CoreBluetooth
- import Combine
-
- // Assuming CBUUIDs and BlePeripheral definitions are elsewhere or provided in the full context
-
- // --- Bluetooth Manager Implementation ---
-
- protocol BluetoothManagerDelegate: AnyObject {
-     func didUpdatePeripherals(_ peripherals: [CBPeripheral])
-     func didConnect(_ peripheral: CBPeripheral)
-     func didFail(error: Error?)
- }
-
- class BluetoothManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-
-     // MARK: - Published Properties for SwiftUI View State
-     @Published var isScanning: Bool = false
-     @Published private(set) var peripherals: [CBPeripheral] = []
-     @Published var isConnected: Bool = false
-     
-     // 🎯 NEW: Published array to store all received data strings
-     @Published var receivedDataHistory: [String] = []
-
-     // MARK: - Private/Internal Properties
-     private var rssiArray = [NSNumber]()
-     weak var delegate: BluetoothManagerDelegate?
-
-     var central: CBCentralManager!
-     private var targetPeripheral: CBPeripheral?
-     private var txCharacteristic: CBCharacteristic!
-     private var rxCharacteristic: CBCharacteristic!
-
-     override init() {
-         super.init()
-         central = CBCentralManager(delegate: self, queue: .main)
-     }
-
-     // --- MARK: - 🔋 State (Initial Scan Trigger)
-     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-         switch central.state {
-         case .poweredOn:
-             print("Bluetooth is powered on. Starting scan now...")
-             startScan()
-         case .unknown:
-             print("Bluetooth state is unknown (0). Waiting for update...")
-         case .poweredOff:
-             print("Bluetooth is powered off (4). Please turn on Bluetooth.")
-             isScanning = false
-         case .resetting:
-             print("Bluetooth connection is temporarily lost (1).")
-             isScanning = false
-         case .unsupported:
-             print("Bluetooth Low Energy is not supported (3).")
-             isScanning = false
-         case .unauthorized:
-             print("The app is not authorized to use Bluetooth (2).")
-             isScanning = false
-         @unknown default:
-             print("A new state was added that is not yet handled.")
-             isScanning = false
-         }
-     }
-
-     // --- MARK: - 🔍 Scan (Targeted Service)
-     func startScan() {
-         guard central.state == .poweredOn else {
-             print("Cannot start scan, Bluetooth is not powered on. Current state: \(central.state.rawValue)")
-             return
-         }
-
-         peripherals.removeAll()
-         isScanning = true
-
-         print("Scanning for Bluefruit UART…")
-         // Assuming CBUUIDs.BLEService_UUID is defined
-         // central.scanForPeripherals(withServices: [CBUUIDs.BLEService_UUID])
-
-         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-             self?.stopScan()
-         }
-     }
-     
-     // --- MARK: - 🔍 Scan (General BLE)
-     func scanForBLEDevices() {
-         guard central.state == .poweredOn else {
-             print("Cannot start general scan, Bluetooth is not powered on. Current state: \(central.state.rawValue)")
-             return
-         }
-             
-         peripherals.removeAll()
-         rssiArray.removeAll()
-             
-         central.scanForPeripherals(withServices: [] , options: [CBCentralManagerScanOptionAllowDuplicatesKey:true])
-         print("Scanning for all BLE Devices…")
-
-         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-             self?.stopScan()
-         }
-     }
-
-     func stopScan() {
-         central?.stopScan()
-         isScanning = false
-         print("Stopped scanning.")
-         delegate?.didUpdatePeripherals(peripherals)
-     }
-
-     // --- MARK: - 📡 Discovery/Connect/Disconnect (Omitted for brevity, assumed functional)
-     
-     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-         // ... (Discovery logic) ...
-     }
-     
-     func connect(_ peripheral: CBPeripheral) {
-         // ... (Connection logic) ...
-     }
-
-     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-         print("Connected:", peripheral.name ?? "Unknown")
-         delegate?.didConnect(peripheral)
-         isConnected = true
-         // peripheral.discoverServices([CBUUIDs.BLEService_UUID])
-     }
-     
-     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-         // ... (Fail to Connect logic) ...
-     }
-
-     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-         print("Disconnected from \(peripheral.name ?? "Unknown"): \(error?.localizedDescription ?? "Unknown error")")
-         isConnected = false
-         
-         // 🎯 Action: Send the disconnection notification
-         // Assuming NotificationManager is defined
-         // NotificationManager.shared.scheduleDisconnectionNotification(deviceName: peripheral.name)
-         
-         targetPeripheral = nil
-         self.isConnected = false
-     }
-
-     // --- MARK: - ⚙️ Services → Characteristics (Omitted for brevity, assumed functional)
-     // ...
-
-     // --- MARK: - 📩 Data Handling (FIXED HERE)
-     
-     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-
-         guard characteristic == rxCharacteristic,
-               let characteristicValue = characteristic.value,
-               let ASCIIstring = NSString(data: characteristicValue, encoding: String.Encoding.utf8.rawValue)
-         else {
-             return
-         }
-
-         let receivedString = ASCIIstring as String
-
-         print("Value Recieved: \(receivedString)")
-         
-         // 🎯 FIX: Append the received string to the published array
-         // Use DispatchQueue.main.async since this delegate method might not be on the main thread,
-         // and updating a @Published property must happen on the main thread.
-         DispatchQueue.main.async {
-             self.receivedDataHistory.append(receivedString)
-         }
-
-         // NotificationCenter post kept for compatibility but should be replaced by @Published
-         NotificationCenter.default.post(name:NSNotification.Name(rawValue: "Notify"), object: receivedString)
-     }
-
-     // --- MARK: - Other Peripheral Methods (Omitted for brevity, assumed functional)
-     // ...
- }
- */
